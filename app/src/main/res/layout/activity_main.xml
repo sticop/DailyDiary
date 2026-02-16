@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background">
+
+    <com.google.android.material.appbar.AppBarLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="@color/primary"
+            app:title="Daily Diary"
+            app:titleTextColor="@android:color/white" />
+
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="24dp"
+            android:gravity="center_horizontal">
+
+            <!-- App Title -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="📔 Daily Diary"
+                android:textSize="28sp"
+                android:textStyle="bold"
+                android:textColor="@color/primary"
+                android:layout_marginTop="16dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Your AI-powered voice diary"
+                android:textSize="14sp"
+                android:textColor="@android:color/darker_gray"
+                android:layout_marginBottom="24dp" />
+
+            <!-- Mic Icon -->
+            <ImageView
+                android:id="@+id/ivMicIcon"
+                android:layout_width="96dp"
+                android:layout_height="96dp"
+                android:src="@android:drawable/ic_btn_speak_now"
+                android:contentDescription="Microphone"
+                android:layout_marginBottom="16dp" />
+
+            <!-- Recording Status -->
+            <TextView
+                android:id="@+id/tvStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⏸️ Recording Paused"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
+            <!-- Transcription Count -->
+            <TextView
+                android:id="@+id/tvTranscriptionCount"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Today's transcriptions: --"
+                android:textSize="14sp"
+                android:textColor="@android:color/darker_gray"
+                android:layout_marginBottom="24dp" />
+
+            <!-- Start/Stop Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnToggleRecording"
+                android:layout_width="280dp"
+                android:layout_height="56dp"
+                android:text="Start Recording"
+                android:textSize="18sp"
+                android:textColor="@android:color/white"
+                app:cornerRadius="28dp"
+                app:backgroundTint="@color/green"
+                android:layout_marginBottom="16dp" />
+
+            <!-- Test Summary Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnTestSummary"
+                android:layout_width="280dp"
+                android:layout_height="48dp"
+                android:text="Test Summary Now"
+                android:textSize="14sp"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                app:strokeColor="@color/primary"
+                app:cornerRadius="24dp"
+                android:layout_marginBottom="8dp" />
+
+            <!-- Settings Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSettings"
+                android:layout_width="280dp"
+                android:layout_height="48dp"
+                android:text="⚙️ Settings"
+                android:textSize="14sp"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_marginBottom="8dp" />
+
+            <!-- Battery Optimization -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnOptimizeBattery"
+                android:layout_width="280dp"
+                android:layout_height="48dp"
+                android:text="🔋 Disable Battery Optimization"
+                android:textSize="12sp"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_marginBottom="16dp" />
+
+            <!-- Config Status -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp"
+                android:layout_marginBottom="16dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Configuration Status"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="8dp" />
+
+                    <TextView
+                        android:id="@+id/tvConfigStatus"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="⚠️ Please configure API key and email in Settings"
+                        android:textSize="13sp" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- How it works -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="How it works"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="8dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="1. 🎙️ Records audio in the background\n2. 📝 Transcribes speech using AI (Whisper)\n3. 💾 Stores transcriptions locally\n4. 🤖 Generates diary summary with GPT\n5. 📧 Emails your daily diary every night"
+                        android:textSize="13sp"
+                        android:lineSpacingExtra="4dp" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+        </LinearLayout>
+
+    </ScrollView>
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
