@@ -1,7 +1,10 @@
 package com.dailydiary
 
 import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -10,6 +13,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -30,6 +34,43 @@ class MainActivity : AppCompatActivity() {
     private var isRecording = false
     private lateinit var transcriptionManager: TranscriptionManager
 
+    /** Accumulates finalized transcription lines for the current session */
+    private val fullTranscription = StringBuilder()
+
+    // ── BroadcastReceiver for live speech results ───────────────────────
+
+    private val transcriptionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val text = intent?.getStringExtra(AudioRecordingService.EXTRA_TEXT) ?: return
+            when (intent.action) {
+                AudioRecordingService.BROADCAST_PARTIAL -> {
+                    // Show what the user is currently saying (in italics below the card)
+                    binding.tvPartialResult.text = "… $text"
+                }
+                AudioRecordingService.BROADCAST_FINAL -> {
+                    // Append finished sentence to the transcript
+                    binding.tvPartialResult.text = ""
+                    val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+                    fullTranscription.append("[$time] $text\n\n")
+                    binding.tvLiveTranscription.text = fullTranscription.toString()
+                    binding.tvLiveIndicator.text = "🔴 Live Transcription"
+                    binding.tvLiveIndicator.setTextColor(
+                        ContextCompat.getColor(this@MainActivity, android.R.color.holo_red_dark))
+                    // Auto-scroll to the latest line
+                    binding.scrollTranscription.post {
+                        binding.scrollTranscription.fullScroll(View.FOCUS_DOWN)
+                    }
+                    updateTranscriptionCount()
+                }
+                AudioRecordingService.BROADCAST_STATUS -> {
+                    binding.tvStatus.text = text
+                }
+            }
+        }
+    }
+
+    // ── Lifecycle ────────────────────────────────────────────────────────
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -39,15 +80,39 @@ class MainActivity : AppCompatActivity() {
         transcriptionManager = TranscriptionManager(this)
 
         setupUI()
+        setupLanguageChips()
         checkPermissions()
         updateStatus()
     }
 
     override fun onResume() {
         super.onResume()
+        registerTranscriptionReceiver()
         updateStatus()
         updateTranscriptionCount()
     }
+
+    override fun onPause() {
+        super.onPause()
+        try { unregisterReceiver(transcriptionReceiver) } catch (_: Exception) {}
+    }
+
+    // ── Receiver registration ───────────────────────────────────────────
+
+    private fun registerTranscriptionReceiver() {
+        val filter = IntentFilter().apply {
+            addAction(AudioRecordingService.BROADCAST_PARTIAL)
+            addAction(AudioRecordingService.BROADCAST_FINAL)
+            addAction(AudioRecordingService.BROADCAST_STATUS)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(transcriptionReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(transcriptionReceiver, filter)
+        }
+    }
+
+    // ── UI Setup ────────────────────────────────────────────────────────
 
     private fun setupUI() {
         binding.btnToggleRecording.setOnClickListener {
@@ -73,7 +138,52 @@ class MainActivity : AppCompatActivity() {
         binding.btnOptimizeBattery.setOnClickListener {
             requestBatteryOptimization()
         }
+
+        binding.btnClearTranscription.setOnClickListener {
+            fullTranscription.clear()
+            binding.tvLiveTranscription.text = "Tap Start Recording to see live transcription…"
+            binding.tvPartialResult.text = ""
+            binding.tvLiveIndicator.text = "📝 Live Transcription"
+            binding.tvLiveIndicator.setTextColor(
+                ContextCompat.getColor(this, R.color.primary))
+        }
     }
+
+    // ── Language chip handling ───────────────────────────────────────────
+
+    private fun setupLanguageChips() {
+        val prefs = getSharedPreferences("daily_diary_prefs", MODE_PRIVATE)
+        val saved = prefs.getString("speech_language", "en-US") ?: "en-US"
+
+        // Reflect the saved language in the chips
+        when (saved) {
+            "en-US" -> binding.chipEnglish.isChecked = true
+            "fr-FR" -> binding.chipFrench.isChecked = true
+            "ar-MA" -> binding.chipMoroccan.isChecked = true
+            "es-ES" -> binding.chipSpanish.isChecked = true
+        }
+
+        binding.chipGroupLanguage.setOnCheckedStateChangeListener { _, checkedIds ->
+            val lang = when {
+                checkedIds.contains(binding.chipEnglish.id)  -> "en-US"
+                checkedIds.contains(binding.chipFrench.id)   -> "fr-FR"
+                checkedIds.contains(binding.chipMoroccan.id) -> "ar-MA"
+                checkedIds.contains(binding.chipSpanish.id)  -> "es-ES"
+                else -> "en-US"
+            }
+            // Persist and tell the service to switch language live
+            prefs.edit().putString("speech_language", lang).apply()
+            if (isRecording) {
+                val intent = Intent(this, AudioRecordingService::class.java).apply {
+                    action = AudioRecordingService.ACTION_CHANGE_LANGUAGE
+                    putExtra(AudioRecordingService.EXTRA_LANGUAGE, lang)
+                }
+                startService(intent)
+            }
+        }
+    }
+
+    // ── Permissions ─────────────────────────────────────────────────────
 
     private fun checkPermissions() {
         val permissions = mutableListOf<String>()
@@ -104,6 +214,8 @@ class MainActivity : AppCompatActivity() {
                 PackageManager.PERMISSION_GRANTED
     }
 
+    // ── Service start / stop ────────────────────────────────────────────
+
     private fun startRecordingService() {
         val intent = Intent(this, AudioRecordingService::class.java).apply {
             action = AudioRecordingService.ACTION_START
@@ -121,43 +233,50 @@ class MainActivity : AppCompatActivity() {
         startService(intent)
         isRecording = false
         updateStatus()
+        binding.tvPartialResult.text = ""
+        binding.tvLiveIndicator.text = "📝 Live Transcription"
+        binding.tvLiveIndicator.setTextColor(
+            ContextCompat.getColor(this, R.color.primary))
         Toast.makeText(this, "Recording stopped", Toast.LENGTH_SHORT).show()
     }
 
+    // ── Status helpers ──────────────────────────────────────────────────
+
     private fun updateStatus() {
+        val prefs = getSharedPreferences("daily_diary_prefs", MODE_PRIVATE)
+        val lang = prefs.getString("speech_language", "en-US") ?: "en-US"
+        val langName = AudioRecordingService.SUPPORTED_LANGUAGES[lang] ?: "English"
+
         if (isRecording) {
             binding.btnToggleRecording.text = "Stop Recording"
             binding.btnToggleRecording.setBackgroundColor(
-                ContextCompat.getColor(this, android.R.color.holo_red_dark)
-            )
-            binding.tvStatus.text = "🔴 Recording Active"
-            binding.tvStatus.setTextColor(ContextCompat.getColor(this, android.R.color.holo_red_dark))
+                ContextCompat.getColor(this, android.R.color.holo_red_dark))
+            binding.tvStatus.text = "🔴 Listening ($langName)"
+            binding.tvStatus.setTextColor(
+                ContextCompat.getColor(this, android.R.color.holo_red_dark))
             binding.ivMicIcon.setImageResource(android.R.drawable.ic_btn_speak_now)
         } else {
             binding.btnToggleRecording.text = "Start Recording"
             binding.btnToggleRecording.setBackgroundColor(
-                ContextCompat.getColor(this, android.R.color.holo_green_dark)
-            )
+                ContextCompat.getColor(this, android.R.color.holo_green_dark))
             binding.tvStatus.text = "⏸️ Recording Paused"
-            binding.tvStatus.setTextColor(ContextCompat.getColor(this, android.R.color.darker_gray))
+            binding.tvStatus.setTextColor(
+                ContextCompat.getColor(this, android.R.color.darker_gray))
             binding.ivMicIcon.setImageResource(android.R.drawable.ic_btn_speak_now)
         }
 
-        // Check if settings are configured
-        val prefs = getSharedPreferences("daily_diary_prefs", MODE_PRIVATE)
+        // Config status
         val apiKey = prefs.getString("openai_api_key", "") ?: ""
         val email = prefs.getString("email_to", "") ?: ""
 
         if (apiKey.isBlank() || email.isBlank()) {
             binding.tvConfigStatus.text = "⚠️ Please configure API key and email in Settings"
             binding.tvConfigStatus.setTextColor(
-                ContextCompat.getColor(this, android.R.color.holo_orange_dark)
-            )
+                ContextCompat.getColor(this, android.R.color.holo_orange_dark))
         } else {
-            binding.tvConfigStatus.text = "✅ Configured - Summary will be sent to $email"
+            binding.tvConfigStatus.text = "✅ Configured — Summary will be sent to $email"
             binding.tvConfigStatus.setTextColor(
-                ContextCompat.getColor(this, android.R.color.holo_green_dark)
-            )
+                ContextCompat.getColor(this, android.R.color.holo_green_dark))
         }
     }
 
@@ -171,6 +290,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    // ── Test Summary ────────────────────────────────────────────────────
 
     private fun testGenerateSummary() {
         binding.btnTestSummary.isEnabled = false
@@ -197,7 +318,6 @@ class MainActivity : AppCompatActivity() {
                 val summarizer = AISummarizer(this@MainActivity)
                 val summary = summarizer.generateSummary(transcriptions, displayDate)
 
-                // Show summary in a dialog
                 val builder = android.app.AlertDialog.Builder(this@MainActivity)
                 builder.setTitle("📔 Today's Diary Preview")
                 builder.setMessage(summary)
@@ -234,6 +354,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ── Battery optimization ────────────────────────────────────────────
+
     private fun requestBatteryOptimization() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val pm = getSystemService(POWER_SERVICE) as PowerManager
@@ -247,6 +369,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    // ── Menu ────────────────────────────────────────────────────────────
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menu.add(0, 1, 0, "Settings")
@@ -262,11 +386,13 @@ class MainActivity : AppCompatActivity() {
             }
             2 -> {
                 val builder = android.app.AlertDialog.Builder(this)
-                builder.setTitle("Daily Diary v1.0")
+                builder.setTitle("Daily Diary v1.1")
                 builder.setMessage(
                     "Your AI-powered daily diary.\n\n" +
-                    "Records audio throughout the day, transcribes it, " +
-                    "and sends you a beautifully summarized diary entry every night.\n\n" +
+                    "Records and transcribes speech in real time, supporting " +
+                    "English, French, Moroccan Arabic (Darija), and Spanish.\n\n" +
+                    "Generates a beautifully summarized diary entry every night " +
+                    "and emails it to you.\n\n" +
                     "© 2026 Daily Diary"
                 )
                 builder.setPositiveButton("OK", null)

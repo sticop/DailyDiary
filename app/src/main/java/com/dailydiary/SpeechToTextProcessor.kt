@@ -1,7 +1,6 @@
 package com.dailydiary
 
 import android.content.Context
-import android.util.Base64
 import android.util.Log
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
@@ -10,12 +9,13 @@ import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 
 /**
  * Speech-to-text processor using OpenAI Whisper API.
- * Falls back to local silence detection if API is not configured.
+ * Supports multilingual transcription (English, French, Moroccan Arabic, Spanish).
+ * Used as a fallback / batch processor; the primary real-time path is
+ * [AudioRecordingService] which uses Android's on-device SpeechRecognizer.
  */
 class SpeechToTextProcessor(private val context: Context) {
 
@@ -32,6 +32,8 @@ class SpeechToTextProcessor(private val context: Context) {
 
     /**
      * Transcribe an audio file to text using OpenAI Whisper API.
+     * Language is auto-detected by Whisper when not specified, supporting
+     * English, French, Arabic (Moroccan), and Spanish seamlessly.
      */
     suspend fun transcribe(audioFile: File): String {
         val prefs = context.getSharedPreferences("daily_diary_prefs", Context.MODE_PRIVATE)
@@ -48,6 +50,8 @@ class SpeechToTextProcessor(private val context: Context) {
     private suspend fun transcribeWithWhisper(audioFile: File, apiKey: String): String =
         suspendCoroutine { continuation ->
             try {
+                // Build multipart request – let Whisper auto-detect language
+                // so it seamlessly handles English, French, Arabic, and Spanish
                 val requestBody = MultipartBody.Builder()
                     .setType(MultipartBody.FORM)
                     .addFormDataPart(
@@ -56,7 +60,6 @@ class SpeechToTextProcessor(private val context: Context) {
                         audioFile.asRequestBody("audio/wav".toMediaType())
                     )
                     .addFormDataPart("model", "whisper-1")
-                    .addFormDataPart("language", "en")
                     .addFormDataPart("response_format", "json")
                     .build()
 
@@ -69,7 +72,7 @@ class SpeechToTextProcessor(private val context: Context) {
                 client.newCall(request).enqueue(object : Callback {
                     override fun onFailure(call: Call, e: IOException) {
                         Log.e(TAG, "Whisper API call failed", e)
-                        continuation.resume("") // Return empty on failure, don't crash
+                        continuation.resume("")
                     }
 
                     override fun onResponse(call: Call, response: Response) {

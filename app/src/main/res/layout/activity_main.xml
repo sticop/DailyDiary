@@ -77,7 +77,56 @@
                 android:text="Today's transcriptions: --"
                 android:textSize="14sp"
                 android:textColor="@android:color/darker_gray"
-                android:layout_marginBottom="24dp" />
+                android:layout_marginBottom="16dp" />
+
+            <!-- Language Selector -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🌍 Language"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:textColor="@color/primary"
+                android:layout_marginBottom="4dp" />
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/chipGroupLanguage"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:singleSelection="true"
+                app:selectionRequired="true"
+                android:layout_marginBottom="16dp">
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipEnglish"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🇬🇧 English"
+                    style="@style/Widget.MaterialComponents.Chip.Choice"
+                    android:checked="true" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipFrench"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🇫🇷 Français"
+                    style="@style/Widget.MaterialComponents.Chip.Choice" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipMoroccan"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🇲🇦 العربية"
+                    style="@style/Widget.MaterialComponents.Chip.Choice" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipSpanish"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🇪🇸 Español"
+                    style="@style/Widget.MaterialComponents.Chip.Choice" />
+
+            </com.google.android.material.chip.ChipGroup>
 
             <!-- Start/Stop Button -->
             <com.google.android.material.button.MaterialButton
@@ -90,6 +139,82 @@
                 app:cornerRadius="28dp"
                 app:backgroundTint="@color/green"
                 android:layout_marginBottom="16dp" />
+
+            <!-- Live Transcription Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardLiveTranscription"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="4dp"
+                app:strokeColor="@color/primary"
+                app:strokeWidth="1dp"
+                android:layout_marginBottom="16dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="8dp">
+
+                        <TextView
+                            android:id="@+id/tvLiveIndicator"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="📝 Live Transcription"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/primary" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnClearTranscription"
+                            android:layout_width="wrap_content"
+                            android:layout_height="36dp"
+                            android:text="Clear"
+                            android:textSize="11sp"
+                            style="@style/Widget.MaterialComponents.Button.TextButton" />
+
+                    </LinearLayout>
+
+                    <ScrollView
+                        android:id="@+id/scrollTranscription"
+                        android:layout_width="match_parent"
+                        android:layout_height="200dp"
+                        android:background="#FFFAFAFA"
+                        android:padding="8dp">
+
+                        <TextView
+                            android:id="@+id/tvLiveTranscription"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Tap Start Recording to see live transcription…"
+                            android:textSize="15sp"
+                            android:lineSpacingExtra="4dp"
+                            android:textColor="@android:color/black" />
+
+                    </ScrollView>
+
+                    <TextView
+                        android:id="@+id/tvPartialResult"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text=""
+                        android:textSize="14sp"
+                        android:textStyle="italic"
+                        android:textColor="@android:color/darker_gray"
+                        android:layout_marginTop="6dp" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
 
             <!-- Test Summary Button -->
             <com.google.android.material.button.MaterialButton
@@ -180,7 +305,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="1. 🎙️ Records audio in the background\n2. 📝 Transcribes speech using AI (Whisper)\n3. 💾 Stores transcriptions locally\n4. 🤖 Generates diary summary with GPT\n5. 📧 Emails your daily diary every night"
+                        android:text="1. 🎙️ Transcribes speech in real time\n2. 🌍 Supports English, French, Moroccan &amp; Spanish\n3. 💾 Stores transcriptions locally\n4. 🤖 Generates diary summary with GPT\n5. 📧 Emails your daily diary every night"
                         android:textSize="13sp"
                         android:lineSpacingExtra="4dp" />
 

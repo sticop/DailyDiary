@@ -1,219 +1,270 @@
 package com.dailydiary
 
 import android.app.Notification
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.media.AudioFormat
-import android.media.AudioRecord
-import android.media.MediaRecorder
 import android.os.Build
+import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.*
-import java.io.File
-import java.io.FileOutputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
+/**
+ * Foreground service that uses Android's SpeechRecognizer for real-time
+ * speech-to-text transcription with multilingual support.
+ *
+ * Broadcasts partial results (as the user speaks) and final results
+ * (when a phrase is complete) so the UI can display live text.
+ */
 class AudioRecordingService : Service() {
 
     companion object {
         private const val TAG = "AudioRecordingService"
         private const val NOTIFICATION_ID = 1
-        private const val SAMPLE_RATE = 16000
-        private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
-        private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
-        private const val CHUNK_DURATION_SECONDS = 30 // Record 30-second chunks
+
         const val ACTION_START = "com.dailydiary.action.START_RECORDING"
         const val ACTION_STOP = "com.dailydiary.action.STOP_RECORDING"
+        const val ACTION_CHANGE_LANGUAGE = "com.dailydiary.action.CHANGE_LANGUAGE"
+        const val EXTRA_LANGUAGE = "extra_language"
+
+        // Broadcast actions (app-local, explicit package)
+        const val BROADCAST_PARTIAL = "com.dailydiary.PARTIAL"
+        const val BROADCAST_FINAL = "com.dailydiary.FINAL"
+        const val BROADCAST_STATUS = "com.dailydiary.STATUS"
+        const val EXTRA_TEXT = "extra_text"
+
+        /** Ordered map of BCP-47 tag → display name */
+        val SUPPORTED_LANGUAGES = linkedMapOf(
+            "en-US" to "English",
+            "fr-FR" to "Français",
+            "ar-MA" to "العربية المغربية",
+            "es-ES" to "Español"
+        )
     }
 
-    private var audioRecord: AudioRecord? = null
-    private var isRecording = false
+    private var speechRecognizer: SpeechRecognizer? = null
+    private var isListening = false
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private lateinit var speechToTextProcessor: SpeechToTextProcessor
     private lateinit var transcriptionManager: TranscriptionManager
+    private var currentLanguage = "en-US"
+
+    // ── Lifecycle ────────────────────────────────────────────────────────
 
     override fun onCreate() {
         super.onCreate()
-        speechToTextProcessor = SpeechToTextProcessor(this)
         transcriptionManager = TranscriptionManager(this)
+        currentLanguage = getSharedPreferences("daily_diary_prefs", MODE_PRIVATE)
+            .getString("speech_language", "en-US") ?: "en-US"
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_START -> startRecording()
-            ACTION_STOP -> stopRecording()
+            ACTION_START -> startListening()
+            ACTION_STOP  -> stopListening()
+            ACTION_CHANGE_LANGUAGE -> {
+                currentLanguage = intent.getStringExtra(EXTRA_LANGUAGE) ?: "en-US"
+                getSharedPreferences("daily_diary_prefs", MODE_PRIVATE)
+                    .edit().putString("speech_language", currentLanguage).apply()
+                if (isListening) {
+                    mainHandler.post { restartRecognizer() }
+                    updateNotification()
+                    broadcast(BROADCAST_STATUS,
+                        "🔴 Listening (${SUPPORTED_LANGUAGES[currentLanguage]})")
+                }
+            }
         }
         return START_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun startRecording() {
-        if (isRecording) return
+    // ── Start / Stop ────────────────────────────────────────────────────
+
+    private fun startListening() {
+        if (isListening) return
 
         val notification = createNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            startForeground(NOTIFICATION_ID, notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        isRecording = true
-        serviceScope.launch {
-            recordAudioLoop()
-        }
-
-        Log.d(TAG, "Recording started")
+        isListening = true
+        mainHandler.post { setupAndStartRecognizer() }
+        broadcast(BROADCAST_STATUS,
+            "🔴 Listening (${SUPPORTED_LANGUAGES[currentLanguage]})")
+        Log.d(TAG, "Started listening in $currentLanguage")
     }
 
-    private fun stopRecording() {
-        isRecording = false
-        audioRecord?.stop()
-        audioRecord?.release()
-        audioRecord = null
+    private fun stopListening() {
+        isListening = false
+        mainHandler.post { destroyRecognizer() }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
-        Log.d(TAG, "Recording stopped")
+        broadcast(BROADCAST_STATUS, "⏸️ Stopped")
+        Log.d(TAG, "Stopped listening")
     }
 
-    private suspend fun recordAudioLoop() {
-        val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
+    // ── SpeechRecognizer management ─────────────────────────────────────
+
+    private fun setupAndStartRecognizer() {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            Log.e(TAG, "Speech recognition not available")
+            broadcast(BROADCAST_STATUS, "❌ Speech recognition unavailable on this device")
+            return
+        }
+        destroyRecognizer()
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
+            setRecognitionListener(recognitionListener)
+        }
+        beginRecognition()
+    }
+
+    private fun restartRecognizer() {
+        destroyRecognizer()
+        setupAndStartRecognizer()
+    }
+
+    private fun destroyRecognizer() {
+        try {
+            speechRecognizer?.stopListening()
+            speechRecognizer?.cancel()
+            speechRecognizer?.destroy()
+        } catch (e: Exception) {
+            Log.w(TAG, "Error destroying recognizer", e)
+        }
+        speechRecognizer = null
+    }
+
+    private fun beginRecognition() {
+        if (!isListening || speechRecognizer == null) return
+
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, currentLanguage)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, currentLanguage)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            // Longer silence thresholds so natural pauses don't cut off speech
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 5000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
+        }
 
         try {
-            audioRecord = AudioRecord(
-                MediaRecorder.AudioSource.MIC,
-                SAMPLE_RATE,
-                CHANNEL_CONFIG,
-                AUDIO_FORMAT,
-                bufferSize * 2
-            )
-
-            if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                Log.e(TAG, "AudioRecord failed to initialize")
-                stopRecording()
-                return
-            }
-
-            audioRecord?.startRecording()
-
-            while (isRecording) {
-                val audioFile = recordChunk(bufferSize)
-                if (audioFile != null && audioFile.length() > 44) { // > WAV header size
-                    processAudioChunk(audioFile)
-                }
-            }
-        } catch (e: SecurityException) {
-            Log.e(TAG, "Permission denied for audio recording", e)
-            stopRecording()
+            speechRecognizer?.startListening(intent)
         } catch (e: Exception) {
-            Log.e(TAG, "Error during recording", e)
-            // Continue recording after short delay
-            delay(1000)
-            if (isRecording) recordAudioLoop()
+            Log.e(TAG, "Error starting recognition", e)
+            scheduleRestart()
         }
     }
 
-    private fun recordChunk(bufferSize: Int): File? {
-        val audioDir = File(filesDir, "audio_chunks")
-        audioDir.mkdirs()
-        val audioFile = File(audioDir, "chunk_${System.currentTimeMillis()}.wav")
+    // ── RecognitionListener ─────────────────────────────────────────────
 
-        try {
-            val totalSamples = SAMPLE_RATE * CHUNK_DURATION_SECONDS
-            val buffer = ShortArray(bufferSize)
-            val audioData = mutableListOf<Short>()
-            var samplesRead = 0
+    private val recognitionListener = object : RecognitionListener {
 
-            while (isRecording && samplesRead < totalSamples) {
-                val read = audioRecord?.read(buffer, 0, buffer.size) ?: -1
-                if (read > 0) {
-                    // Simple voice activity detection: check if audio level is above threshold
-                    val maxAmplitude = buffer.take(read).maxOfOrNull { kotlin.math.abs(it.toInt()) } ?: 0
-                    if (maxAmplitude > 500) { // Threshold to filter silence
-                        for (i in 0 until read) {
-                            audioData.add(buffer[i])
-                        }
+        override fun onReadyForSpeech(params: Bundle?) {
+            Log.d(TAG, "Ready for speech")
+        }
+
+        override fun onBeginningOfSpeech() {
+            Log.d(TAG, "User started speaking")
+        }
+
+        override fun onRmsChanged(rmsdB: Float) {}
+        override fun onBufferReceived(buffer: ByteArray?) {}
+
+        override fun onEndOfSpeech() {
+            Log.d(TAG, "User stopped speaking")
+        }
+
+        override fun onError(error: Int) {
+            val msg = when (error) {
+                SpeechRecognizer.ERROR_NO_MATCH          -> "No speech detected"
+                SpeechRecognizer.ERROR_SPEECH_TIMEOUT     -> "Silence timeout"
+                SpeechRecognizer.ERROR_AUDIO              -> "Audio error"
+                SpeechRecognizer.ERROR_CLIENT             -> "Client error"
+                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Permission denied"
+                SpeechRecognizer.ERROR_NETWORK            -> "Network error"
+                SpeechRecognizer.ERROR_NETWORK_TIMEOUT    -> "Network timeout"
+                SpeechRecognizer.ERROR_SERVER              -> "Server error"
+                SpeechRecognizer.ERROR_RECOGNIZER_BUSY    -> "Recognizer busy"
+                else -> "Error $error"
+            }
+            Log.w(TAG, "Recognition error: $msg")
+            // Restart for every recoverable error
+            if (error != SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                scheduleRestart()
+            }
+        }
+
+        override fun onResults(results: Bundle?) {
+            val text = results
+                ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                ?.firstOrNull()
+            if (!text.isNullOrBlank()) {
+                broadcast(BROADCAST_FINAL, text)
+                serviceScope.launch {
+                    try {
+                        transcriptionManager.saveTranscription(text)
+                        Log.d(TAG, "Saved: ${text.take(80)}")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Save error", e)
                     }
-                    samplesRead += read
                 }
             }
-
-            if (audioData.isEmpty()) {
-                return null // No audio above threshold
-            }
-
-            // Write WAV file
-            writeWavFile(audioFile, audioData.toShortArray())
-            return audioFile
-        } catch (e: Exception) {
-            Log.e(TAG, "Error recording chunk", e)
-            audioFile.delete()
-            return null
-        }
-    }
-
-    private fun writeWavFile(file: File, audioData: ShortArray) {
-        val byteData = ByteArray(audioData.size * 2)
-        val buffer = ByteBuffer.wrap(byteData).order(ByteOrder.LITTLE_ENDIAN)
-        for (sample in audioData) {
-            buffer.putShort(sample)
+            scheduleRestart() // continue listening
         }
 
-        FileOutputStream(file).use { fos ->
-            val dataSize = byteData.size
-            val header = ByteArray(44)
-            val headerBuffer = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN)
-
-            // RIFF header
-            headerBuffer.put("RIFF".toByteArray())
-            headerBuffer.putInt(36 + dataSize)
-            headerBuffer.put("WAVE".toByteArray())
-
-            // fmt chunk
-            headerBuffer.put("fmt ".toByteArray())
-            headerBuffer.putInt(16) // Chunk size
-            headerBuffer.putShort(1) // PCM format
-            headerBuffer.putShort(1) // Mono
-            headerBuffer.putInt(SAMPLE_RATE)
-            headerBuffer.putInt(SAMPLE_RATE * 2) // Byte rate
-            headerBuffer.putShort(2) // Block align
-            headerBuffer.putShort(16) // Bits per sample
-
-            // data chunk
-            headerBuffer.put("data".toByteArray())
-            headerBuffer.putInt(dataSize)
-
-            fos.write(header)
-            fos.write(byteData)
-        }
-    }
-
-    private fun processAudioChunk(audioFile: File) {
-        serviceScope.launch {
-            try {
-                val transcription = speechToTextProcessor.transcribe(audioFile)
-                if (transcription.isNotBlank()) {
-                    transcriptionManager.saveTranscription(transcription)
-                    Log.d(TAG, "Transcription saved: ${transcription.take(50)}...")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error processing audio chunk", e)
-            } finally {
-                // Clean up audio file to save space
-                audioFile.delete()
+        override fun onPartialResults(partialResults: Bundle?) {
+            val text = partialResults
+                ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                ?.firstOrNull()
+            if (!text.isNullOrBlank()) {
+                broadcast(BROADCAST_PARTIAL, text)
             }
         }
+
+        override fun onEvent(eventType: Int, params: Bundle?) {}
+    }
+
+    // ── Helpers ─────────────────────────────────────────────────────────
+
+    private fun scheduleRestart() {
+        if (!isListening) return
+        mainHandler.postDelayed({
+            if (isListening) beginRecognition()
+        }, 250)
+    }
+
+    private fun broadcast(action: String, text: String) {
+        sendBroadcast(Intent(action).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_TEXT, text)
+        })
+    }
+
+    private fun updateNotification() {
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(NOTIFICATION_ID, createNotification())
     }
 
     private fun createNotification(): Notification {
         val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
+            this, 0,
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -227,8 +278,8 @@ class AudioRecordingService : Service() {
         )
 
         return NotificationCompat.Builder(this, DailyDiaryApp.CHANNEL_ID_RECORDING)
-            .setContentTitle("Daily Diary Recording")
-            .setContentText("Listening and capturing your day...")
+            .setContentTitle("Daily Diary — Live Transcription")
+            .setContentText("Listening in ${SUPPORTED_LANGUAGES[currentLanguage]}…")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(pendingIntent)
             .addAction(android.R.drawable.ic_media_pause, "Stop", stopPendingIntent)
@@ -237,9 +288,8 @@ class AudioRecordingService : Service() {
     }
 
     override fun onDestroy() {
-        isRecording = false
-        audioRecord?.stop()
-        audioRecord?.release()
+        isListening = false
+        mainHandler.post { destroyRecognizer() }
         serviceScope.cancel()
         super.onDestroy()
     }
