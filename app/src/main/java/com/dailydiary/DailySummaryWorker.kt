@@ -95,7 +95,8 @@ class DailySummaryWorker(
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setSilent(true)
             .setAutoCancel(true)
             .build()
 

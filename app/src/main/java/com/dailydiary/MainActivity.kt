@@ -80,7 +80,6 @@ class MainActivity : AppCompatActivity() {
         transcriptionManager = TranscriptionManager(this)
 
         setupUI()
-        setupLanguageChips()
         checkPermissions()
         updateStatus()
     }
@@ -149,40 +148,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ── Language chip handling ───────────────────────────────────────────
-
-    private fun setupLanguageChips() {
-        val prefs = getSharedPreferences("daily_diary_prefs", MODE_PRIVATE)
-        val saved = prefs.getString("speech_language", "en-US") ?: "en-US"
-
-        // Reflect the saved language in the chips
-        when (saved) {
-            "en-US" -> binding.chipEnglish.isChecked = true
-            "fr-FR" -> binding.chipFrench.isChecked = true
-            "ar-MA" -> binding.chipMoroccan.isChecked = true
-            "es-ES" -> binding.chipSpanish.isChecked = true
-        }
-
-        binding.chipGroupLanguage.setOnCheckedStateChangeListener { _, checkedIds ->
-            val lang = when {
-                checkedIds.contains(binding.chipEnglish.id)  -> "en-US"
-                checkedIds.contains(binding.chipFrench.id)   -> "fr-FR"
-                checkedIds.contains(binding.chipMoroccan.id) -> "ar-MA"
-                checkedIds.contains(binding.chipSpanish.id)  -> "es-ES"
-                else -> "en-US"
-            }
-            // Persist and tell the service to switch language live
-            prefs.edit().putString("speech_language", lang).apply()
-            if (isRecording) {
-                val intent = Intent(this, AudioRecordingService::class.java).apply {
-                    action = AudioRecordingService.ACTION_CHANGE_LANGUAGE
-                    putExtra(AudioRecordingService.EXTRA_LANGUAGE, lang)
-                }
-                startService(intent)
-            }
-        }
-    }
-
     // ── Permissions ─────────────────────────────────────────────────────
 
     private fun checkPermissions() {
@@ -244,14 +209,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateStatus() {
         val prefs = getSharedPreferences("daily_diary_prefs", MODE_PRIVATE)
-        val lang = prefs.getString("speech_language", "en-US") ?: "en-US"
-        val langName = AudioRecordingService.SUPPORTED_LANGUAGES[lang] ?: "English"
 
         if (isRecording) {
             binding.btnToggleRecording.text = "Stop Recording"
             binding.btnToggleRecording.setBackgroundColor(
                 ContextCompat.getColor(this, android.R.color.holo_red_dark))
-            binding.tvStatus.text = "🔴 Listening ($langName)"
+            binding.tvStatus.text = "🔴 Listening (auto-detect)"
             binding.tvStatus.setTextColor(
                 ContextCompat.getColor(this, android.R.color.holo_red_dark))
             binding.ivMicIcon.setImageResource(android.R.drawable.ic_btn_speak_now)
@@ -389,8 +352,8 @@ class MainActivity : AppCompatActivity() {
                 builder.setTitle("Daily Diary v1.1")
                 builder.setMessage(
                     "Your AI-powered daily diary.\n\n" +
-                    "Records and transcribes speech in real time, supporting " +
-                    "English, French, Moroccan Arabic (Darija), and Spanish.\n\n" +
+                    "Records and transcribes speech in real time, automatically " +
+                    "detecting English, French, Moroccan Arabic (Darija), and Spanish.\n\n" +
                     "Generates a beautifully summarized diary entry every night " +
                     "and emails it to you.\n\n" +
                     "© 2026 Daily Diary"

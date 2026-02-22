@@ -28,14 +28,18 @@ class DailyDiaryApp : Application() {
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "Shows when Daily Diary is recording audio"
+                setSound(null, null)
+                enableVibration(false)
             }
 
             val summaryChannel = NotificationChannel(
                 CHANNEL_ID_SUMMARY,
                 "Daily Summary",
-                NotificationManager.IMPORTANCE_HIGH
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "Notifications for your daily diary summary"
+                setSound(null, null)
+                enableVibration(false)
             }
 
             val notificationManager = getSystemService(NotificationManager::class.java)

@@ -79,54 +79,14 @@
                 android:textColor="@android:color/darker_gray"
                 android:layout_marginBottom="16dp" />
 
-            <!-- Language Selector -->
+            <!-- Auto Language Info -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="🌍 Language"
-                android:textSize="14sp"
-                android:textStyle="bold"
-                android:textColor="@color/primary"
-                android:layout_marginBottom="4dp" />
-
-            <com.google.android.material.chip.ChipGroup
-                android:id="@+id/chipGroupLanguage"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                app:singleSelection="true"
-                app:selectionRequired="true"
-                android:layout_marginBottom="16dp">
-
-                <com.google.android.material.chip.Chip
-                    android:id="@+id/chipEnglish"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="🇬🇧 English"
-                    style="@style/Widget.MaterialComponents.Chip.Choice"
-                    android:checked="true" />
-
-                <com.google.android.material.chip.Chip
-                    android:id="@+id/chipFrench"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="🇫🇷 Français"
-                    style="@style/Widget.MaterialComponents.Chip.Choice" />
-
-                <com.google.android.material.chip.Chip
-                    android:id="@+id/chipMoroccan"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="🇲🇦 العربية"
-                    style="@style/Widget.MaterialComponents.Chip.Choice" />
-
-                <com.google.android.material.chip.Chip
-                    android:id="@+id/chipSpanish"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="🇪🇸 Español"
-                    style="@style/Widget.MaterialComponents.Chip.Choice" />
-
-            </com.google.android.material.chip.ChipGroup>
+                android:text="🌍 Auto-detecting: English, Français, العربية, Español"
+                android:textSize="13sp"
+                android:textColor="@android:color/darker_gray"
+                android:layout_marginBottom="16dp" />
 
             <!-- Start/Stop Button -->
             <com.google.android.material.button.MaterialButton

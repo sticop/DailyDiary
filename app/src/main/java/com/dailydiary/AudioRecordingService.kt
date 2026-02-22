@@ -33,22 +33,12 @@ class AudioRecordingService : Service() {
 
         const val ACTION_START = "com.dailydiary.action.START_RECORDING"
         const val ACTION_STOP = "com.dailydiary.action.STOP_RECORDING"
-        const val ACTION_CHANGE_LANGUAGE = "com.dailydiary.action.CHANGE_LANGUAGE"
-        const val EXTRA_LANGUAGE = "extra_language"
 
         // Broadcast actions (app-local, explicit package)
         const val BROADCAST_PARTIAL = "com.dailydiary.PARTIAL"
         const val BROADCAST_FINAL = "com.dailydiary.FINAL"
         const val BROADCAST_STATUS = "com.dailydiary.STATUS"
         const val EXTRA_TEXT = "extra_text"
-
-        /** Ordered map of BCP-47 tag → display name */
-        val SUPPORTED_LANGUAGES = linkedMapOf(
-            "en-US" to "English",
-            "fr-FR" to "Français",
-            "ar-MA" to "العربية المغربية",
-            "es-ES" to "Español"
-        )
     }
 
     private var speechRecognizer: SpeechRecognizer? = null
@@ -56,32 +46,18 @@ class AudioRecordingService : Service() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private lateinit var transcriptionManager: TranscriptionManager
-    private var currentLanguage = "en-US"
 
     // ── Lifecycle ────────────────────────────────────────────────────────
 
     override fun onCreate() {
         super.onCreate()
         transcriptionManager = TranscriptionManager(this)
-        currentLanguage = getSharedPreferences("daily_diary_prefs", MODE_PRIVATE)
-            .getString("speech_language", "en-US") ?: "en-US"
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> startListening()
             ACTION_STOP  -> stopListening()
-            ACTION_CHANGE_LANGUAGE -> {
-                currentLanguage = intent.getStringExtra(EXTRA_LANGUAGE) ?: "en-US"
-                getSharedPreferences("daily_diary_prefs", MODE_PRIVATE)
-                    .edit().putString("speech_language", currentLanguage).apply()
-                if (isListening) {
-                    mainHandler.post { restartRecognizer() }
-                    updateNotification()
-                    broadcast(BROADCAST_STATUS,
-                        "🔴 Listening (${SUPPORTED_LANGUAGES[currentLanguage]})")
-                }
-            }
         }
         return START_STICKY
     }
@@ -103,9 +79,8 @@ class AudioRecordingService : Service() {
 
         isListening = true
         mainHandler.post { setupAndStartRecognizer() }
-        broadcast(BROADCAST_STATUS,
-            "🔴 Listening (${SUPPORTED_LANGUAGES[currentLanguage]})")
-        Log.d(TAG, "Started listening in $currentLanguage")
+        broadcast(BROADCAST_STATUS, "🔴 Listening (auto-detect)")
+        Log.d(TAG, "Started listening with auto language detection")
     }
 
     private fun stopListening() {
@@ -154,10 +129,12 @@ class AudioRecordingService : Service() {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, currentLanguage)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, currentLanguage)
+            // Auto-detect language: accept all supported languages
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
+            putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES",
+                arrayOf("en-US", "fr-FR", "ar-MA", "es-ES"))
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
             // Longer silence thresholds so natural pauses don't cut off speech
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 5000L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
@@ -279,11 +256,12 @@ class AudioRecordingService : Service() {
 
         return NotificationCompat.Builder(this, DailyDiaryApp.CHANNEL_ID_RECORDING)
             .setContentTitle("Daily Diary — Live Transcription")
-            .setContentText("Listening in ${SUPPORTED_LANGUAGES[currentLanguage]}…")
+            .setContentText("Listening — auto-detecting language…")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(pendingIntent)
             .addAction(android.R.drawable.ic_media_pause, "Stop", stopPendingIntent)
             .setOngoing(true)
+            .setSilent(true)
             .build()
     }
 
