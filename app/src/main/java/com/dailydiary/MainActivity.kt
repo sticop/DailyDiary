@@ -82,6 +82,13 @@ class MainActivity : AppCompatActivity() {
         setupUI()
         checkPermissions()
         updateStatus()
+
+        // Auto-start recording if launched with START action
+        if (intent?.action == AudioRecordingService.ACTION_START && !isRecording) {
+            if (hasRequiredPermissions()) {
+                startRecordingService()
+            }
+        }
     }
 
     override fun onResume() {

@@ -142,6 +142,7 @@ class AudioRecordingService : Service() {
                 val chunkFile = recordChunk(buffer, bufferSize)
 
                 if (chunkFile != null && isRecording) {
+                    Log.d(TAG, "Chunk recorded, sending to Deepgram...")
                     // Show processing indicator
                     withContext(Dispatchers.Main) {
                         broadcast(BROADCAST_PARTIAL, "🎙️ Processing speech…")
@@ -150,6 +151,7 @@ class AudioRecordingService : Service() {
                     // Transcribe with Deepgram Nova-2 (auto-detects language)
                     try {
                         val text = speechProcessor.transcribe(chunkFile)
+                        Log.d(TAG, "Deepgram returned: '${text.take(100)}'")
                         if (text.isNotBlank()) {
                             withContext(Dispatchers.Main) {
                                 broadcast(BROADCAST_PARTIAL, "")
@@ -161,6 +163,7 @@ class AudioRecordingService : Service() {
                             withContext(Dispatchers.Main) {
                                 broadcast(BROADCAST_PARTIAL, "")
                             }
+                            Log.d(TAG, "Empty transcription returned")
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Transcription error", e)
@@ -224,7 +227,9 @@ class AudioRecordingService : Service() {
             }
 
             // Check if there was meaningful audio (not just silence)
-            if (maxAmplitude < 200) {
+            Log.d(TAG, "Chunk maxAmplitude=$maxAmplitude, samples=$samplesRecorded, fileSize=${chunkFile.length()}")
+            if (maxAmplitude < 50) {
+                Log.d(TAG, "Silence detected (amp=$maxAmplitude), skipping chunk")
                 chunkFile.delete()
                 return null
             }

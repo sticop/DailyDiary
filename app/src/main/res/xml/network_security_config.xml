@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Trust system CAs + Let's Encrypt / modern CAs for older Android versions -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+            <!-- Include user-installed CAs for debug if needed -->
+        </trust-anchors>
+    </base-config>
+
+    <!-- Deepgram API domain: trust system CAs -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">api.deepgram.com</domain>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/lets_encrypt_isrg_root_x1" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>
