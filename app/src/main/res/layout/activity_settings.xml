@@ -46,7 +46,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Used for speech-to-text (Whisper) and diary generation (GPT)"
+                    android:text="Used for diary generation (GPT). Speech-to-text is powered by Deepgram Nova-2 (multilingual: EN/FR/AR/ES)."
                     android:textSize="12sp"
                     android:textColor="@android:color/darker_gray"
                     android:layout_marginBottom="12dp" />

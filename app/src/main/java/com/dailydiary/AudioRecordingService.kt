@@ -19,7 +19,7 @@ import java.io.RandomAccessFile
 
 /**
  * Foreground service that records audio in chunks and sends them to
- * OpenAI Whisper API for multilingual transcription with automatic
+ * Deepgram Nova-2 API for multilingual transcription with automatic
  * language detection. Supports English, French, Moroccan Arabic (Darija),
  * and Spanish seamlessly — no manual language selection needed.
  */
@@ -72,15 +72,6 @@ class AudioRecordingService : Service() {
     private fun startRecording() {
         if (isRecording) return
 
-        // Check API key first
-        val prefs = getSharedPreferences("daily_diary_prefs", MODE_PRIVATE)
-        val apiKey = prefs.getString("openai_api_key", "") ?: ""
-        if (apiKey.isBlank()) {
-            broadcast(BROADCAST_STATUS, "❌ Set OpenAI API key in Settings first")
-            stopSelf()
-            return
-        }
-
         val notification = createNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
@@ -92,8 +83,8 @@ class AudioRecordingService : Service() {
         }
 
         isRecording = true
-        broadcast(BROADCAST_STATUS, "🔴 Listening (auto-detect)")
-        Log.d(TAG, "Started recording with Whisper auto language detection")
+        broadcast(BROADCAST_STATUS, "🔴 Listening — Deepgram multilingual")
+        Log.d(TAG, "Started recording with Deepgram Nova-2 multilingual detection")
 
         recordingJob = serviceScope.launch {
             recordAndTranscribeLoop()
@@ -156,7 +147,7 @@ class AudioRecordingService : Service() {
                         broadcast(BROADCAST_PARTIAL, "🎙️ Processing speech…")
                     }
 
-                    // Transcribe with Whisper (auto-detects language)
+                    // Transcribe with Deepgram Nova-2 (auto-detects language)
                     try {
                         val text = speechProcessor.transcribe(chunkFile)
                         if (text.isNotBlank()) {
@@ -324,7 +315,7 @@ class AudioRecordingService : Service() {
 
         return NotificationCompat.Builder(this, DailyDiaryApp.CHANNEL_ID_RECORDING)
             .setContentTitle("Daily Diary — Live Transcription")
-            .setContentText("Listening — auto-detecting language…")
+            .setContentText("Listening — Deepgram multilingual (EN/FR/AR/ES)")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(pendingIntent)
             .addAction(android.R.drawable.ic_media_pause, "Stop", stopPendingIntent)

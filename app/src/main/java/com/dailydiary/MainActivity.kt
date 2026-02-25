@@ -214,7 +214,7 @@ class MainActivity : AppCompatActivity() {
             binding.btnToggleRecording.text = "Stop Recording"
             binding.btnToggleRecording.setBackgroundColor(
                 ContextCompat.getColor(this, android.R.color.holo_red_dark))
-            binding.tvStatus.text = "🔴 Listening (auto-detect)"
+            binding.tvStatus.text = "🔴 Listening — Deepgram multilingual"
             binding.tvStatus.setTextColor(
                 ContextCompat.getColor(this, android.R.color.holo_red_dark))
             binding.ivMicIcon.setImageResource(android.R.drawable.ic_btn_speak_now)
@@ -232,8 +232,12 @@ class MainActivity : AppCompatActivity() {
         val apiKey = prefs.getString("openai_api_key", "") ?: ""
         val email = prefs.getString("email_to", "") ?: ""
 
-        if (apiKey.isBlank() || email.isBlank()) {
-            binding.tvConfigStatus.text = "⚠️ Please configure API key and email in Settings"
+        if (apiKey.isBlank()) {
+            binding.tvConfigStatus.text = "⚠️ Set OpenAI API key in Settings for diary summaries"
+            binding.tvConfigStatus.setTextColor(
+                ContextCompat.getColor(this, android.R.color.holo_orange_dark))
+        } else if (email.isBlank()) {
+            binding.tvConfigStatus.text = "⚠️ Set recipient email in Settings for diary delivery"
             binding.tvConfigStatus.setTextColor(
                 ContextCompat.getColor(this, android.R.color.holo_orange_dark))
         } else {
@@ -352,10 +356,11 @@ class MainActivity : AppCompatActivity() {
                 builder.setTitle("Daily Diary v1.1")
                 builder.setMessage(
                     "Your AI-powered daily diary.\n\n" +
-                    "Records and transcribes speech in real time, automatically " +
-                    "detecting English, French, Moroccan Arabic (Darija), and Spanish.\n\n" +
+                    "Records and transcribes speech in real time using Deepgram Nova-2, " +
+                    "automatically detecting English, French, Moroccan Arabic (Darija), " +
+                    "and Spanish — even mid-sentence code-switching.\n\n" +
                     "Generates a beautifully summarized diary entry every night " +
-                    "and emails it to you.\n\n" +
+                    "using OpenAI GPT and emails it to you.\n\n" +
                     "© 2026 Daily Diary"
                 )
                 builder.setPositiveButton("OK", null)

@@ -76,7 +76,7 @@ class SettingsActivity : AppCompatActivity() {
 
         // Validation
         if (apiKey.isBlank()) {
-            binding.etApiKey.error = "API key is required"
+            binding.etApiKey.error = "API key is required for diary summaries"
             return
         }
         if (emailTo.isBlank()) {

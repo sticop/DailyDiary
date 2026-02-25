@@ -12,16 +12,26 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
 /**
- * Speech-to-text processor using OpenAI Whisper API.
- * Supports multilingual transcription (English, French, Moroccan Arabic, Spanish).
- * Used as a fallback / batch processor; the primary real-time path is
- * [AudioRecordingService] which uses Android's on-device SpeechRecognizer.
+ * Speech-to-text processor using Deepgram Nova-2 API.
+ * Supports multilingual transcription with automatic language detection
+ * across English, French, Moroccan Arabic (Darija), and Spanish.
+ *
+ * Uses Deepgram's `language=multi` parameter for seamless code-switching
+ * between all supported languages — no manual selection needed.
  */
 class SpeechToTextProcessor(private val context: Context) {
 
     companion object {
         private const val TAG = "SpeechToText"
-        private const val WHISPER_API_URL = "https://api.openai.com/v1/audio/transcriptions"
+        private const val DEEPGRAM_API_KEY = "6f9cc0cb7c2180febeb41ce630690592652f16dc"
+        private const val DEEPGRAM_API_URL =
+            "https://api.deepgram.com/v1/listen" +
+            "?model=nova-2" +
+            "&language=multi" +       // Auto-detect: EN, FR, AR (Darija), ES
+            "&smart_format=true" +     // Smart formatting (punctuation, casing)
+            "&punctuate=true" +        // Ensure punctuation
+            "&diarize=false" +         // Single speaker diary use-case
+            "&utterances=false"
     }
 
     private val client = OkHttpClient.Builder()
@@ -31,47 +41,30 @@ class SpeechToTextProcessor(private val context: Context) {
         .build()
 
     /**
-     * Transcribe an audio file to text using OpenAI Whisper API.
-     * Language is auto-detected by Whisper when not specified, supporting
-     * English, French, Arabic (Moroccan), and Spanish seamlessly.
+     * Transcribe an audio file to text using Deepgram Nova-2 API.
+     * Language is auto-detected across English, French, Arabic (Moroccan Darija),
+     * and Spanish — supports mid-sentence code-switching seamlessly.
      */
     suspend fun transcribe(audioFile: File): String {
-        val prefs = context.getSharedPreferences("daily_diary_prefs", Context.MODE_PRIVATE)
-        val apiKey = prefs.getString("openai_api_key", "") ?: ""
-
-        if (apiKey.isBlank()) {
-            Log.w(TAG, "No OpenAI API key configured. Audio chunk skipped.")
-            return ""
-        }
-
-        return transcribeWithWhisper(audioFile, apiKey)
+        return transcribeWithDeepgram(audioFile)
     }
 
-    private suspend fun transcribeWithWhisper(audioFile: File, apiKey: String): String =
+    private suspend fun transcribeWithDeepgram(audioFile: File): String =
         suspendCoroutine { continuation ->
             try {
-                // Build multipart request – let Whisper auto-detect language
-                // so it seamlessly handles English, French, Arabic, and Spanish
-                val requestBody = MultipartBody.Builder()
-                    .setType(MultipartBody.FORM)
-                    .addFormDataPart(
-                        "file",
-                        audioFile.name,
-                        audioFile.asRequestBody("audio/wav".toMediaType())
-                    )
-                    .addFormDataPart("model", "whisper-1")
-                    .addFormDataPart("response_format", "json")
-                    .build()
+                // Deepgram accepts raw audio body (not multipart) with Content-Type header
+                val requestBody = audioFile.asRequestBody("audio/wav".toMediaType())
 
                 val request = Request.Builder()
-                    .url(WHISPER_API_URL)
-                    .addHeader("Authorization", "Bearer $apiKey")
+                    .url(DEEPGRAM_API_URL)
+                    .addHeader("Authorization", "Token $DEEPGRAM_API_KEY")
+                    .addHeader("Content-Type", "audio/wav")
                     .post(requestBody)
                     .build()
 
                 client.newCall(request).enqueue(object : Callback {
                     override fun onFailure(call: Call, e: IOException) {
-                        Log.e(TAG, "Whisper API call failed", e)
+                        Log.e(TAG, "Deepgram API call failed", e)
                         continuation.resume("")
                     }
 
@@ -80,21 +73,36 @@ class SpeechToTextProcessor(private val context: Context) {
                             val body = response.body?.string() ?: ""
                             if (response.isSuccessful) {
                                 val json = JSONObject(body)
-                                val text = json.optString("text", "")
-                                Log.d(TAG, "Transcription: ${text.take(100)}")
-                                continuation.resume(text)
+                                // Deepgram response: results.channels[0].alternatives[0].transcript
+                                val transcript = json
+                                    .optJSONObject("results")
+                                    ?.optJSONArray("channels")
+                                    ?.optJSONObject(0)
+                                    ?.optJSONArray("alternatives")
+                                    ?.optJSONObject(0)
+                                    ?.optString("transcript", "") ?: ""
+
+                                // Also log detected language if available
+                                val detectedLang = json
+                                    .optJSONObject("results")
+                                    ?.optJSONArray("channels")
+                                    ?.optJSONObject(0)
+                                    ?.optString("detected_language", "multi")
+                                Log.d(TAG, "Deepgram [$detectedLang]: ${transcript.take(100)}")
+
+                                continuation.resume(transcript)
                             } else {
-                                Log.e(TAG, "Whisper API error ${response.code}: $body")
+                                Log.e(TAG, "Deepgram API error ${response.code}: $body")
                                 continuation.resume("")
                             }
                         } catch (e: Exception) {
-                            Log.e(TAG, "Error parsing Whisper response", e)
+                            Log.e(TAG, "Error parsing Deepgram response", e)
                             continuation.resume("")
                         }
                     }
                 })
             } catch (e: Exception) {
-                Log.e(TAG, "Error calling Whisper API", e)
+                Log.e(TAG, "Error calling Deepgram API", e)
                 continuation.resume("")
             }
         }
